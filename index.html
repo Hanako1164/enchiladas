@@ -1,22 +1,230 @@
-
 <html>
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <!-- A-Frame -->
     <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+
+    <!-- MindAR -->
     <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+
+    <!-- Librería para leer GIFs -->
+    <script src="https://cdn.jsdelivr.net/npm/gifuct-js@2.1.2/dist/gifuct.min.js"></script>
   </head>
+
   <body>
-    <a-scene mindar-image="imageTargetSrc: ./markerc.mind;" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+
+    <a-scene
+      mindar-image="imageTargetSrc: ./markerc.mind;"
+      color-space="sRGB"
+      renderer="colorManagement: true, physicallyCorrectLights"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: false"
+    >
+
       <a-assets>
-         <img id="card" src="https://cdn.jsdelivr.net/gh/Hanako1164/enchiladas@main/Ralsei.gif" />
-        <a-asset-item id="avatarModel" src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/image-tracking/assets/card-example/softmind/scene.gltf"></a-asset-item>
+
+        <!-- GIF -->
+        <img
+          id="ralseiGif"
+          src="./Ralsei.gif"
+          crossorigin="anonymous"
+        />
+
+        <!-- Modelo 3D -->
+        <a-asset-item
+          id="avatarModel"
+          src="https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/image-tracking/assets/card-example/softmind/scene.gltf">
+        </a-asset-item>
+
       </a-assets>
 
-      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+      <a-camera
+        position="0 0 0"
+        look-controls="enabled: false">
+      </a-camera>
+
+
       <a-entity mindar-image-target="targetIndex: 0">
-        <a-plane src="#card" position="0 0 0" height="0.552" width="1" rotation="0 0 0"></a-plane>
-        <a-gltf-model rotation="0 0 0 " position="0 0 0.1" scale="0.005 0.005 0.005" src="#avatarModel" animation="property: position; to: 0 0.1 0.1; dur: 1000; easing: easeInOutQuad; loop: true; dir: alternate">
+
+        <!-- Canvas donde se reproducirá Ralsei -->
+        <a-plane
+          id="ralseiPlane"
+          position="0 0 0"
+          height="0.552"
+          width="1"
+          rotation="0 0 0">
+        </a-plane>
+
+        <!-- Modelo 3D -->
+        <a-gltf-model
+          rotation="0 0 0"
+          position="0 0 0.1"
+          scale="0.005 0.005 0.005"
+          src="#avatarModel"
+          animation="
+            property: position;
+            to: 0 0.1 0.1;
+            dur: 1000;
+            easing: easeInOutQuad;
+            loop: true;
+            dir: alternate">
+        </a-gltf-model>
+
       </a-entity>
+
     </a-scene>
+
+
+    <script>
+
+      const gifURL = "./Ralsei.gif";
+
+      let canvas;
+      let ctx;
+
+      let frames = [];
+      let currentFrame = 0;
+
+      let animationTimer = null;
+
+
+      async function loadGIF() {
+
+        console.log("Cargando GIF...");
+
+        const response = await fetch(gifURL);
+
+        const buffer = await response.arrayBuffer();
+
+        const gif = parseGIF(buffer);
+
+        frames = decompressFrames(gif, true);
+
+        console.log("Frames encontrados:", frames.length);
+
+
+        if (frames.length === 0) {
+          console.error("El GIF no tiene frames.");
+          return;
+        }
+
+
+        const width = frames[0].dims.width;
+        const height = frames[0].dims.height;
+
+
+        // Crear canvas
+        canvas = document.createElement("canvas");
+
+        canvas.width = width;
+        canvas.height = height;
+
+        ctx = canvas.getContext("2d");
+
+
+        // Obtener el plane de A-Frame
+        const plane = document.querySelector("#ralseiPlane");
+
+
+        // Crear textura de A-Frame
+        const texture = new THREE.CanvasTexture(canvas);
+
+        texture.colorSpace = THREE.SRGBColorSpace;
+
+        plane.object3D.traverse(function (obj) {
+
+          if (obj.material) {
+
+            obj.material.map = texture;
+
+            obj.material.needsUpdate = true;
+
+          }
+
+        });
+
+
+        // Dibujar primer frame
+        drawFrame();
+
+
+        // Comenzar animación
+        animateGIF();
+      }
+
+
+      function drawFrame() {
+
+        const frame = frames[currentFrame];
+
+        const imageData = new ImageData(
+          new Uint8ClampedArray(frame.patch),
+          frame.dims.width,
+          frame.dims.height
+        );
+
+
+        ctx.putImageData(
+          imageData,
+          frame.dims.left,
+          frame.dims.top
+        );
+      }
+
+
+      function animateGIF() {
+
+        drawFrame();
+
+
+        const frame = frames[currentFrame];
+
+        currentFrame++;
+
+        if (currentFrame >= frames.length) {
+          currentFrame = 0;
+        }
+
+
+        // Actualizar textura
+        const plane = document.querySelector("#ralseiPlane");
+
+
+        plane.object3D.traverse(function (obj) {
+
+          if (obj.material && obj.material.map) {
+
+            obj.material.map.needsUpdate = true;
+
+          }
+
+        });
+
+
+        const delay = frame.delay || 100;
+
+        animationTimer = setTimeout(
+          animateGIF,
+          delay
+        );
+      }
+
+
+      // Esperar a que A-Frame esté listo
+      document.addEventListener("DOMContentLoaded", function () {
+
+        const scene = document.querySelector("a-scene");
+
+        scene.addEventListener("loaded", function () {
+
+          loadGIF();
+
+        });
+
+      });
+
+    </script>
+
   </body>
 </html>
